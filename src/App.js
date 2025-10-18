@@ -17,6 +17,7 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authView, setAuthView] = useState('login');
   const [currentPage, setCurrentPage] = useState('home');
+  const [isFullPageView, setIsFullPageView] = useState(false);
   
   useEffect(() => {
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
@@ -77,15 +78,18 @@ export default function App() {
       )}
       
       {currentPage === 'myanalyses' && (
-        <MyAnalysesPage 
+        <MyAnalysesPage
           user={user}
           setShowAuthModal={setShowAuthModal}
           setAuthView={setAuthView}
+          setIsFullPageView={setIsFullPageView}
         />
       )}
-      
+
       {currentPage === 'community' && (
-        <CommunityPage />
+        <CommunityPage
+          setIsFullPageView={setIsFullPageView}
+        />
       )}
       
       {currentPage === 'about' && (
@@ -103,8 +107,8 @@ export default function App() {
           setShowAuthModal={setShowAuthModal}
         />
       )}
-      
-      <Footer />
+
+      {!isFullPageView && <Footer />}
     </div>
   );
 }
@@ -546,7 +550,7 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
 }
 
 // ==================== MY ANALYSES PAGE - FIXED THUMBNAIL ====================
-function MyAnalysesPage({ user, setShowAuthModal, setAuthView }) {
+function MyAnalysesPage({ user, setShowAuthModal, setAuthView, setIsFullPageView }) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
@@ -560,6 +564,10 @@ function MyAnalysesPage({ user, setShowAuthModal, setAuthView }) {
     }
     loadMyAnalyses();
   }, [user]);
+
+  useEffect(() => {
+    setIsFullPageView(!!selectedAnalysis);
+  }, [selectedAnalysis, setIsFullPageView]);
 
   const loadMyAnalyses = async () => {
     try {
@@ -796,7 +804,7 @@ function MyAnalysesPage({ user, setShowAuthModal, setAuthView }) {
 }
 
 // ==================== COMMUNITY PAGE - FIXED THUMBNAIL ====================
-function CommunityPage() {
+function CommunityPage({ setIsFullPageView }) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
@@ -805,6 +813,10 @@ function CommunityPage() {
   useEffect(() => {
     loadCommunityAnalyses();
   }, []);
+
+  useEffect(() => {
+    setIsFullPageView(!!selectedAnalysis);
+  }, [selectedAnalysis, setIsFullPageView]);
 
   const loadCommunityAnalyses = async () => {
     try {
