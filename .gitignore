@@ -1,5 +1,10 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+/src/App-v1-working.css
+/src/App-v1-working.js
+/src/App-v2-working-iframe.js
+/src/App-v2.working-iframe.css
+
 # dependencies
 /node_modules
 /.pnp
