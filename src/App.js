@@ -88,6 +88,7 @@ export default function App() {
 
       {currentPage === 'community' && (
         <CommunityPage
+          user={user}
           setIsFullPageView={setIsFullPageView}
         />
       )}
@@ -229,6 +230,21 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
   const [showChart, setShowChart] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [rightPanelTab, setRightPanelTab] = useState('results'); // 'results' or 'log'
+  const [logs, setLogs] = useState([]);
+  const logContainerRef = useRef(null);
+
+  // Auto-scroll logs to bottom when new logs are added
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const addLog = (level, message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, level, message }]);
+  };
 
   const handleAnalyze = async () => {
     if (!user) {
@@ -240,16 +256,20 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
 
     if (!credFile) {
       setError('Please upload your Google credentials file');
+      addLog('error', 'Missing Google credentials file');
       return;
     }
 
     if (!query.trim()) {
       setError('Please enter an analysis query');
+      addLog('error', 'Missing analysis query');
       return;
     }
 
     setLoading(true);
     setError('');
+    addLog('info', `Starting analysis: "${query}"`);
+    addLog('info', 'Uploading credentials and query to backend...');
 
     try {
       const formData = new FormData();
@@ -257,6 +277,7 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       formData.append('user_id', user.id);
       formData.append('credentials_file', credFile);
 
+      addLog('info', 'Sending request to backend API...');
       const response = await fetch(`${GCP_BACKEND_URL}/analyze`, {
         method: 'POST',
         body: formData
@@ -268,7 +289,11 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       }
 
       const data = await response.json();
-      
+      addLog('success', `Analysis completed! Session ID: ${data.session_id}`);
+      addLog('info', `Analysis type: ${data.analysis_type}`);
+      addLog('info', `Location: ${data.location || 'Unknown'}`);
+
+      addLog('info', 'Saving analysis to database...');
       await supabase.from('analyses').insert([{
         user_id: user.id,
         user_email: user.email,
@@ -288,14 +313,16 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
         location: data.location || 'N/A',
         created_at: new Date()
       };
-      
+
       setResults([newResult, ...results]);
       setSelectedResult(newResult);
       setShowChart(false);
       setQuery('');
       setCredFile(null);
+      addLog('success', 'Analysis results ready to view!');
     } catch (err) {
       setError(err.message);
+      addLog('error', `Analysis failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -367,10 +394,11 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
               className="query-textarea"
               rows="5"
             />
-            <div className="input-footer">
-              <p className="input-hint">Press Enter to send, Shift + Enter for new line</p>
-              {error && <div className="error-message-inline">{error}</div>}
-            </div>
+            {error && (
+              <div className="input-footer">
+                <div className="error-message-inline">{error}</div>
+              </div>
+            )}
           </div>
 
           <button 
@@ -387,13 +415,6 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
               'Start Analysis'
             )}
           </button>
-
-          {!credFile && (
-            <div className="warning-box">
-              <span className="warning-icon">⚠</span>
-              Credentials required for analysis
-            </div>
-          )}
         </div>
 
         <div className="sample-questions">
@@ -428,30 +449,50 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
 
       <div className="right-panel">
         <div className="results-header">
-          <h3>Analysis Results</h3>
-          <p>Your completed analyses and visualizations</p>
+          <div className="right-panel-tabs">
+            <button
+              onClick={() => setRightPanelTab('results')}
+              className={`right-panel-tab ${rightPanelTab === 'results' ? 'active' : ''}`}
+            >
+              Analysis Results
+            </button>
+            <button
+              onClick={() => setRightPanelTab('log')}
+              className={`right-panel-tab ${rightPanelTab === 'log' ? 'active' : ''}`}
+            >
+              Log
+            </button>
+          </div>
+          {rightPanelTab === 'results' && (
+            <p>Your completed analyses and visualizations</p>
+          )}
+          {rightPanelTab === 'log' && (
+            <p>Backend logs and analysis progress</p>
+          )}
         </div>
 
         <div className="results-content">
-          {loading && (
-            <div className="result-loading">
-              <div className="loading-animation">
-                <div className="spinner-large"></div>
-                <p>Running analysis...</p>
-                <p className="loading-detail">This may take a few minutes</p>
-              </div>
-            </div>
-          )}
+          {rightPanelTab === 'results' && (
+            <>
+              {loading && (
+                <div className="result-loading">
+                  <div className="loading-animation">
+                    <div className="spinner-large"></div>
+                    <p>Running analysis...</p>
+                    <p className="loading-detail">This may take a few minutes</p>
+                  </div>
+                </div>
+              )}
 
-          {!loading && !selectedResult && results.length === 0 && (
-            <div className="empty-results">
-              <div className="empty-icon">📊</div>
-              <h4>No results yet</h4>
-              <p>Start your first analysis to see results here</p>
-            </div>
-          )}
+              {!loading && !selectedResult && results.length === 0 && (
+                <div className="empty-results">
+                  <div className="empty-icon">📊</div>
+                  <h4>No results yet</h4>
+                  <p>Start your first analysis to see results here</p>
+                </div>
+              )}
 
-          {selectedResult && (
+              {selectedResult && (
             <div className="result-viewer">
               <div className="result-viewer-header">
                 <div>
@@ -523,8 +564,8 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
           {!selectedResult && results.length > 0 && (
             <div className="results-list">
               {results.map((result) => (
-                <div 
-                  key={result.id} 
+                <div
+                  key={result.id}
                   className="result-card"
                   onClick={() => setSelectedResult(result)}
                 >
@@ -541,6 +582,39 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+            </>
+          )}
+
+          {rightPanelTab === 'log' && (
+            <div className="log-container">
+              <div className="log-header">
+                <button
+                  onClick={() => setLogs([])}
+                  className="btn btn-secondary btn-small"
+                >
+                  Clear Logs
+                </button>
+              </div>
+              <div className="log-content" ref={logContainerRef}>
+                {logs.length === 0 ? (
+                  <div className="log-empty">
+                    <div className="empty-icon">📋</div>
+                    <p>No logs yet. Start an analysis to see backend logs here.</p>
+                  </div>
+                ) : (
+                  <div className="log-entries">
+                    {logs.map((log, index) => (
+                      <div key={index} className={`log-entry log-${log.level}`}>
+                        <span className="log-timestamp">{log.timestamp}</span>
+                        <span className="log-level">{log.level}</span>
+                        <span className="log-message">{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -804,15 +878,19 @@ function MyAnalysesPage({ user, setShowAuthModal, setAuthView, setIsFullPageView
 }
 
 // ==================== COMMUNITY PAGE - FIXED THUMBNAIL ====================
-function CommunityPage({ setIsFullPageView }) {
+function CommunityPage({ setIsFullPageView, user }) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [showChart, setShowChart] = useState(false);
+  const [userLikes, setUserLikes] = useState(new Set());
 
   useEffect(() => {
     loadCommunityAnalyses();
-  }, []);
+    if (user) {
+      loadUserLikes();
+    }
+  }, [user]);
 
   useEffect(() => {
     setIsFullPageView(!!selectedAnalysis);
@@ -833,6 +911,24 @@ function CommunityPage({ setIsFullPageView }) {
       console.error('Failed to load community analyses:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUserLikes = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('analysis_likes')
+        .select('analysis_id')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      const likedAnalysisIds = new Set(data.map(item => item.analysis_id));
+      setUserLikes(likedAnalysisIds);
+    } catch (err) {
+      console.error('Failed to load user likes:', err);
     }
   };
 
@@ -870,6 +966,73 @@ function CommunityPage({ setIsFullPageView }) {
   const getMapUrl = (item) => {
     if (item.map_url) return item.map_url;
     return `${GCP_BACKEND_URL}/results/${item.session_id}/map`;
+  };
+
+  const handleLike = async (analysisId, currentLikes) => {
+    if (!user) {
+      alert('Please login to like analyses');
+      return;
+    }
+
+    const isAlreadyLiked = userLikes.has(analysisId);
+
+    try {
+      if (isAlreadyLiked) {
+        // Unlike: Remove like record
+        const { error: unlikeError } = await supabase
+          .from('analysis_likes')
+          .delete()
+          .eq('analysis_id', analysisId)
+          .eq('user_id', user.id);
+
+        if (unlikeError) throw unlikeError;
+
+        // Decrease like count
+        const newLikes = Math.max((currentLikes || 0) - 1, 0);
+        const { error: updateError } = await supabase
+          .from('analyses')
+          .update({ likes: newLikes })
+          .eq('id', analysisId);
+
+        if (updateError) throw updateError;
+
+        // Remove from local userLikes set
+        setUserLikes(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(analysisId);
+          return newSet;
+        });
+      } else {
+        // Like: Insert like record
+        const { error: likeError } = await supabase
+          .from('analysis_likes')
+          .insert([{
+            analysis_id: analysisId,
+            user_id: user.id,
+            created_at: new Date().toISOString()
+          }]);
+
+        if (likeError) throw likeError;
+
+        // Increase like count
+        const newLikes = (currentLikes || 0) + 1;
+        const { error: updateError } = await supabase
+          .from('analyses')
+          .update({ likes: newLikes })
+          .eq('id', analysisId);
+
+        if (updateError) throw updateError;
+
+        // Add to local userLikes set
+        setUserLikes(prev => new Set([...prev, analysisId]));
+      }
+
+      // Reload analyses to show updated like count
+      loadCommunityAnalyses();
+    } catch (err) {
+      console.error('Failed to toggle like:', err);
+      alert('Failed to update like');
+    }
   };
 
   if (loading) {
@@ -981,10 +1144,19 @@ function CommunityPage({ setIsFullPageView }) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleLike(item.id, item.likes);
+                    }}
+                    className={`btn btn-secondary btn-small like-btn ${userLikes.has(item.id) ? 'liked' : ''}`}
+                    title={userLikes.has(item.id) ? "Click to unlike" : "Like this analysis"}
+                  >
+                    👍 {item.likes || 0}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedAnalysis(item);
                     }}
                     className="btn btn-primary btn-small"
-                    style={{ width: '100%' }}
                   >
                     View Results
                   </button>
