@@ -3,10 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import './App.css';
 
 // ==================== CONFIGURATION ====================
-//const GCP_BACKEND_URL = 'https://ndvi3-analysis-api-258557095482.us-central1.run.app';
-//const GCP_BACKEND_URL = 'https://ndvi4-analysis-api-wdkuwjzm3q-uc.a.run.app';
-const GCP_BACKEND_URL = 'https://ndvi4-analysis-api-258557095482.us-central1.run.app';
 //const GCP_BACKEND_URL = 'http://localhost:8080'; // For local testing
+//const GCP_BACKEND_URL = 'https://ndvi3-analysis-api-258557095482.us-central1.run.app';
+const GCP_BACKEND_URL = 'https://ndvi4-analysis-api-258557095482.us-central1.run.app';
 const SUPABASE_URL = 'https://quvbsftdyaxjqlwnjtxv.supabase.co';
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dmJzZnRkeWF4anFsd25qdHh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1MzI0OTEsImV4cCI6MjA3NjEwODQ5MX0.BpxqHKTvmSghuNDtLAKU-hszFJzey_oyn5_hDRZeqTg";
 
