@@ -994,15 +994,20 @@ function MyAnalysesPage({ user, setShowAuthModal, setAuthView, setIsFullPageView
 }
 
 // ==================== COMMUNITY PAGE - FIXED THUMBNAIL ====================
+const ANALYSES_PER_PAGE = 20;
+
 function CommunityPage({ setIsFullPageView, user }) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [showChart, setShowChart] = useState(false);
   const [userLikes, setUserLikes] = useState(new Set());
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    loadCommunityAnalyses();
+    loadCommunityAnalyses(false);
     if (user) {
       loadUserLikes();
     }
@@ -1012,21 +1017,42 @@ function CommunityPage({ setIsFullPageView, user }) {
     setIsFullPageView(!!selectedAnalysis);
   }, [selectedAnalysis, setIsFullPageView]);
 
-  const loadCommunityAnalyses = async () => {
+  const loadCommunityAnalyses = async (loadMore = false) => {
     try {
+      if (loadMore) {
+        setLoadingMore(true);
+      }
+
+      const startIndex = loadMore ? (page + 1) * ANALYSES_PER_PAGE : 0;
+      const endIndex = startIndex + ANALYSES_PER_PAGE - 1;
+
       const { data, error } = await supabase
         .from('analyses')
         .select('*')
         .eq('is_shared', true)
         .order('shared_at', { ascending: false })
-        .limit(100);
+        .range(startIndex, endIndex);
 
       if (error) throw error;
-      setAnalyses(data || []);
+
+      // Check if we got a full page of results
+      const receivedFullPage = data && data.length === ANALYSES_PER_PAGE;
+      setHasMore(receivedFullPage);
+
+      if (loadMore) {
+        // Append new results to existing analyses
+        setAnalyses(prev => [...prev, ...(data || [])]);
+        setPage(prev => prev + 1);
+      } else {
+        // Replace all analyses (initial load)
+        setAnalyses(data || []);
+        setPage(0);
+      }
     } catch (err) {
       console.error('Failed to load community analyses:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -1143,8 +1169,12 @@ function CommunityPage({ setIsFullPageView, user }) {
         setUserLikes(prev => new Set([...prev, analysisId]));
       }
 
-      // Reload analyses to show updated like count
-      loadCommunityAnalyses();
+      // Update the analysis in local state instead of reloading
+      setAnalyses(prev => prev.map(analysis =>
+        analysis.id === analysisId
+          ? { ...analysis, likes: isAlreadyLiked ? Math.max((currentLikes || 0) - 1, 0) : (currentLikes || 0) + 1 }
+          : analysis
+      ));
     } catch (err) {
       console.error('Failed to toggle like:', err);
       alert('Failed to update like');
@@ -1280,6 +1310,27 @@ function CommunityPage({ setIsFullPageView, user }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Load More Button */}
+      {!loading && analyses.length > 0 && hasMore && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem', marginBottom: '2rem' }}>
+          <button
+            onClick={() => loadCommunityAnalyses(true)}
+            disabled={loadingMore}
+            className="btn btn-secondary btn-large"
+          >
+            {loadingMore ? 'Loading...' : 'Load More'}
+          </button>
+        </div>
+      )}
+
+      {/* Show total count */}
+      {!loading && analyses.length > 0 && (
+        <div style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          Showing {analyses.length} {analyses.length === 1 ? 'analysis' : 'analyses'}
+          {!hasMore && ' (all loaded)'}
         </div>
       )}
     </div>
