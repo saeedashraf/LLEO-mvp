@@ -3,7 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 import './App.css';
 
 // ==================== CONFIGURATION ====================
-const GCP_BACKEND_URL = 'https://ndvi3-analysis-api-258557095482.us-central1.run.app';
+//const GCP_BACKEND_URL = 'https://ndvi3-analysis-api-258557095482.us-central1.run.app';
+//const GCP_BACKEND_URL = 'https://ndvi4-analysis-api-wdkuwjzm3q-uc.a.run.app';
+const GCP_BACKEND_URL = 'https://ndvi4-analysis-api-258557095482.us-central1.run.app';
+//const GCP_BACKEND_URL = 'http://localhost:8080'; // For local testing
 const SUPABASE_URL = 'https://quvbsftdyaxjqlwnjtxv.supabase.co';
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dmJzZnRkeWF4anFsd25qdHh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1MzI0OTEsImV4cCI6MjA3NjEwODQ5MX0.BpxqHKTvmSghuNDtLAKU-hszFJzey_oyn5_hDRZeqTg";
 
@@ -101,6 +104,14 @@ export default function App() {
         <PricingPage />
       )}
 
+      {currentPage === 'billing' && (
+        <BillingPage
+          user={user}
+          setShowAuthModal={setShowAuthModal}
+          setAuthView={setAuthView}
+        />
+      )}
+
       {showAuthModal && (
         <AuthModal 
           authView={authView}
@@ -117,6 +128,7 @@ export default function App() {
 // ==================== NAVIGATION BAR ====================
 function Navigation({ user, setUser, darkMode, setDarkMode, setShowAuthModal, currentPage, setCurrentPage }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [credits, setCredits] = useState(null);
   const profileMenuRef = useRef(null);
 
   useEffect(() => {
@@ -128,6 +140,29 @@ function Navigation({ user, setUser, darkMode, setDarkMode, setShowAuthModal, cu
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Load user credits when dropdown opens
+  useEffect(() => {
+    if (user && showProfileMenu) {
+      loadCredits();
+    }
+  }, [user, showProfileMenu]);
+
+  const loadCredits = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_credits')
+        .select('credits')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      setCredits(data?.credits ?? 0);
+    } catch (err) {
+      console.error('Failed to load credits:', err);
+      setCredits(0);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -197,10 +232,15 @@ function Navigation({ user, setUser, darkMode, setDarkMode, setShowAuthModal, cu
                     </div>
                   </div>
                   <div className="profile-divider"></div>
+                  <div className="credit-display">
+                    <span className="credit-label">Credits:</span>
+                    <span className="credit-amount">{credits !== null ? credits : '...'}</span>
+                  </div>
+                  <div className="profile-divider"></div>
                   <button onClick={() => alert('Settings coming soon!')} className="dropdown-item">
                     Settings
                   </button>
-                  <button onClick={() => alert('Billing coming soon!')} className="dropdown-item">
+                  <button onClick={() => setCurrentPage('billing')} className="dropdown-item">
                     Billing
                   </button>
                   <div className="profile-divider"></div>
@@ -266,6 +306,30 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       return;
     }
 
+    // Check if user has enough credits
+    try {
+      const { data: creditData, error: creditError } = await supabase
+        .from('user_credits')
+        .select('credits')
+        .eq('user_id', user.id)
+        .single();
+
+      if (creditError) throw creditError;
+
+      if (!creditData || creditData.credits < 1) {
+        setError('Insufficient credits. Please upgrade your plan to continue.');
+        addLog('error', 'Insufficient credits. You need at least 1 credit to run an analysis.');
+        alert('You don\'t have enough credits!\n\nYou need at least 1 credit to run an analysis.\nGo to Billing in your profile menu to upgrade.');
+        return;
+      }
+
+      addLog('info', `Current credits: ${creditData.credits}`);
+    } catch (err) {
+      setError('Failed to check credits');
+      addLog('error', `Failed to check credits: ${err.message}`);
+      return;
+    }
+
     setLoading(true);
     setError('');
     addLog('info', `Starting analysis: "${query}"`);
@@ -294,16 +358,41 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       addLog('info', `Location: ${data.location || 'Unknown'}`);
 
       addLog('info', 'Saving analysis to database...');
-      await supabase.from('analyses').insert([{
-        user_id: user.id,
-        user_email: user.email,
-        session_id: data.session_id,
-        query: query,
-        analysis_type: data.analysis_type,
-        location: data.location || 'Unknown',
-        is_shared: false,
-        created_at: new Date().toISOString()
-      }]);
+      const { data: analysisData, error: insertError } = await supabase
+        .from('analyses')
+        .insert([{
+          user_id: user.id,
+          user_email: user.email,
+          session_id: data.session_id,
+          query: query,
+          analysis_type: data.analysis_type,
+          location: data.location || 'Unknown',
+          is_shared: false,
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Deduct 1 credit using Supabase function
+      addLog('info', 'Deducting 1 credit...');
+      const { data: deductResult, error: deductError } = await supabase
+        .rpc('deduct_credits', {
+          p_user_id: user.id,
+          p_amount: 1,
+          p_analysis_id: analysisData.id,
+          p_description: `Analysis: ${query.substring(0, 50)}...`
+        });
+
+      if (deductError) {
+        console.error('Failed to deduct credits:', deductError);
+        addLog('warning', 'Analysis completed but failed to deduct credit');
+      } else if (deductResult && !deductResult.success) {
+        addLog('warning', `Credit deduction issue: ${deductResult.error}`);
+      } else {
+        addLog('success', `Credit deducted! Remaining: ${deductResult.credits_remaining}`);
+      }
 
       const newResult = {
         id: Date.now(),
@@ -591,6 +680,34 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
             <div className="log-container">
               <div className="log-header">
                 <button
+                  onClick={async () => {
+                    try {
+                      addLog('info', 'Fetching backend logs from Cloud Logging...');
+                      const response = await fetch(`${GCP_BACKEND_URL}/api/logs?limit=50`);
+                      if (!response.ok) throw new Error('Failed to fetch logs');
+
+                      const data = await response.json();
+                      if (data.success && data.logs) {
+                        addLog('success', `Loaded ${data.count} backend logs`);
+                        // Add backend logs to frontend logs
+                        data.logs.forEach(backendLog => {
+                          const timestamp = backendLog.timestamp ? new Date(backendLog.timestamp).toLocaleTimeString() : 'N/A';
+                          const level = backendLog.severity ? backendLog.severity.toLowerCase() : 'info';
+                          const message = `[Backend] ${backendLog.message}`;
+                          setLogs(prev => [...prev, { timestamp, level, message }]);
+                        });
+                      } else {
+                        addLog('warning', 'No backend logs available');
+                      }
+                    } catch (err) {
+                      addLog('error', `Failed to load backend logs: ${err.message}`);
+                    }
+                  }}
+                  className="btn btn-primary btn-small"
+                >
+                  Load Backend Logs
+                </button>
+                <button
                   onClick={() => setLogs([])}
                   className="btn btn-secondary btn-small"
                 >
@@ -601,7 +718,7 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
                 {logs.length === 0 ? (
                   <div className="log-empty">
                     <div className="empty-icon">📋</div>
-                    <p>No logs yet. Start an analysis to see backend logs here.</p>
+                    <p>No logs yet. Start an analysis or load backend logs from Cloud Logging.</p>
                   </div>
                 ) : (
                   <div className="log-entries">
@@ -1304,6 +1421,214 @@ function PricingPage() {
             <li>Dedicated support</li>
           </ul>
           <button className="btn btn-secondary btn-large">Contact Sales</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== BILLING PAGE ====================
+function BillingPage({ user, setShowAuthModal, setAuthView }) {
+  const [credits, setCredits] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setShowAuthModal(true);
+      setAuthView('signup');
+      return;
+    }
+    loadBillingData();
+  }, [user]);
+
+  const loadBillingData = async () => {
+    try {
+      // Load credits
+      const { data: creditData, error: creditError } = await supabase
+        .from('user_credits')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (creditError) throw creditError;
+      setCredits(creditData);
+
+      // Load subscription
+      const { data: subData, error: subError } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (subError) throw subError;
+      setSubscription(subData);
+
+      // Load recent transactions
+      const { data: transData, error: transError } = await supabase
+        .from('credit_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (transError) throw transError;
+      setTransactions(transData || []);
+
+    } catch (err) {
+      console.error('Failed to load billing data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpgrade = () => {
+    alert('Stripe integration coming soon!\n\nTo enable payments:\n1. Set up your Stripe account\n2. Add API keys to backend\n3. Implement checkout flow\n\nSee STRIPE_SETUP_GUIDE.md for details.');
+  };
+
+  if (!user) {
+    return null;
+  }
+
+  if (loading) {
+    return (
+      <div className="page-container">
+        <div className="loading-text">Loading billing information...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <h1>Billing & Credits</h1>
+        <p>Manage your subscription and credit balance</p>
+      </div>
+
+      <div className="billing-grid">
+        {/* Credit Balance Card */}
+        <div className="billing-card">
+          <div className="billing-card-header">
+            <h3>Credit Balance</h3>
+            <div className="credit-badge">
+              {credits?.credits || 0} Credits
+            </div>
+          </div>
+          <div className="billing-card-content">
+            <div className="stat-row">
+              <span className="stat-label">Total Used:</span>
+              <span className="stat-value">{credits?.total_used || 0}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-label">Remaining:</span>
+              <span className="stat-value stat-highlight">{credits?.credits || 0}</span>
+            </div>
+            <p className="billing-note">Each analysis uses 1 credit</p>
+          </div>
+        </div>
+
+        {/* Subscription Card */}
+        <div className="billing-card">
+          <div className="billing-card-header">
+            <h3>Current Plan</h3>
+            <div className={`plan-badge plan-${subscription?.plan_type || 'free'}`}>
+              {subscription?.plan_type?.toUpperCase() || 'FREE'}
+            </div>
+          </div>
+          <div className="billing-card-content">
+            <div className="stat-row">
+              <span className="stat-label">Status:</span>
+              <span className={`status-badge status-${subscription?.status || 'inactive'}`}>
+                {subscription?.status || 'inactive'}
+              </span>
+            </div>
+            {subscription?.plan_type === 'free' ? (
+              <>
+                <p className="billing-description">
+                  You're on the free plan with 20 initial credits.
+                </p>
+                <button onClick={handleUpgrade} className="btn btn-primary btn-large">
+                  Upgrade to Pro - $49/month
+                </button>
+                <p className="billing-note">Get 100 credits per month</p>
+              </>
+            ) : (
+              <>
+                <p className="billing-description">
+                  You have an active Pro subscription.
+                </p>
+                <button onClick={() => alert('Manage subscription via Stripe Customer Portal')} className="btn btn-secondary btn-large">
+                  Manage Subscription
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Transaction History */}
+      <div className="billing-section">
+        <h2>Transaction History</h2>
+        {transactions.length === 0 ? (
+          <div className="empty-state">
+            <p>No transactions yet</p>
+          </div>
+        ) : (
+          <div className="transaction-list">
+            {transactions.map((trans) => (
+              <div key={trans.id} className="transaction-item">
+                <div className="transaction-icon">
+                  {trans.amount > 0 ? '+' : '-'}
+                </div>
+                <div className="transaction-details">
+                  <div className="transaction-description">{trans.description}</div>
+                  <div className="transaction-date">
+                    {new Date(trans.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className={`transaction-amount ${trans.amount > 0 ? 'positive' : 'negative'}`}>
+                  {trans.amount > 0 ? '+' : ''}{trans.amount}
+                </div>
+                <div className="transaction-balance">
+                  Balance: {trans.balance_after}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pricing Plans */}
+      <div className="billing-section">
+        <h2>Available Plans</h2>
+        <div className="pricing-grid-simple">
+          <div className="pricing-card-simple">
+            <h3>Free</h3>
+            <div className="price-simple">$0<span>/month</span></div>
+            <ul>
+              <li>20 credits on signup</li>
+              <li>Basic satellite data</li>
+              <li>Community sharing</li>
+            </ul>
+            <button className="btn btn-secondary btn-large" disabled>
+              Current Plan
+            </button>
+          </div>
+
+          <div className="pricing-card-simple featured-simple">
+            <h3>Pro</h3>
+            <div className="price-simple">$49<span>/month</span></div>
+            <ul>
+              <li>100 credits per month</li>
+              <li>Advanced satellite data</li>
+              <li>Priority processing</li>
+              <li>API access</li>
+            </ul>
+            <button onClick={handleUpgrade} className="btn btn-primary btn-large">
+              Upgrade Now
+            </button>
+          </div>
         </div>
       </div>
     </div>
