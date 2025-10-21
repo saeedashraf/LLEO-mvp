@@ -1431,7 +1431,7 @@ function PricingPage() {
             <span className="price-period">/month</span>
           </div>
           <ul className="pricing-features">
-            <li>10 analyses per month</li>
+            <li>20 credits on signup</li>
             <li>Basic satellite data</li>
             <li>Community sharing</li>
             <li>Email support</li>
@@ -1443,11 +1443,11 @@ function PricingPage() {
           <div className="pricing-badge-featured">Popular</div>
           <h3>Professional</h3>
           <div className="price">
-            <span className="price-amount">$49</span>
+            <span className="price-amount">$39</span>
             <span className="price-period">/month</span>
           </div>
           <ul className="pricing-features">
-            <li>100 analyses per month</li>
+            <li>100 credits per month</li>
             <li>Advanced satellite data</li>
             <li>Priority processing</li>
             <li>API access</li>
@@ -1533,8 +1533,31 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
     }
   };
 
-  const handleUpgrade = () => {
-    alert('Stripe integration coming soon!\n\nTo enable payments:\n1. Set up your Stripe account\n2. Add API keys to backend\n3. Implement checkout flow\n\nSee STRIPE_SETUP_GUIDE.md for details.');
+  const handleUpgrade = async () => {
+    try {
+      // Call backend to create Stripe checkout session
+      const formData = new FormData();
+      formData.append('user_email', user.email);
+      formData.append('user_id', user.id);
+
+      const response = await fetch(`${GCP_BACKEND_URL}/api/billing/create-checkout-session`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create checkout session');
+      }
+
+      const data = await response.json();
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.checkout_url;
+    } catch (err) {
+      console.error('Upgrade error:', err);
+      alert(`Failed to start upgrade process: ${err.message}`);
+    }
   };
 
   if (!user) {
@@ -1599,7 +1622,7 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
                   You're on the free plan with 20 initial credits.
                 </p>
                 <button onClick={handleUpgrade} className="btn btn-primary btn-large">
-                  Upgrade to Pro - $49/month
+                  Upgrade to Pro - $39/month
                 </button>
                 <p className="billing-note">Get 100 credits per month</p>
               </>
@@ -1668,7 +1691,7 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
 
           <div className="pricing-card-simple featured-simple">
             <h3>Pro</h3>
-            <div className="price-simple">$49<span>/month</span></div>
+            <div className="price-simple">$39<span>/month</span></div>
             <ul>
               <li>100 credits per month</li>
               <li>Advanced satellite data</li>
