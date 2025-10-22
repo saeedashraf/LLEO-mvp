@@ -1573,6 +1573,9 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
 
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 404 || errorData.detail?.includes('Customer not found')) {
+          throw new Error('No active subscription found. Please upgrade to Pro first.');
+        }
         throw new Error(errorData.detail || 'Failed to create portal session');
       }
 
@@ -1642,7 +1645,7 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
                 {subscription?.status || 'inactive'}
               </span>
             </div>
-            {subscription?.plan_type === 'free' ? (
+            {subscription?.plan_type === 'free' || !subscription?.stripe_customer_id ? (
               <>
                 <p className="billing-description">
                   You're on the free plan with 20 initial credits.
