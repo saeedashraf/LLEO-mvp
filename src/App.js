@@ -100,7 +100,7 @@ export default function App() {
       )}
       
       {currentPage === 'pricing' && (
-        <PricingPage />
+        <PricingPage setCurrentPage={setCurrentPage} />
       )}
 
       {currentPage === 'billing' && (
@@ -1414,7 +1414,7 @@ function AboutPage() {
 }
 
 // ==================== PRICING PAGE ====================
-function PricingPage() {
+function PricingPage({ setCurrentPage }) {
   return (
     <div className="page-container">
       <div className="page-header">
@@ -1443,7 +1443,7 @@ function PricingPage() {
           <div className="pricing-badge-featured">Popular</div>
           <h3>Professional</h3>
           <div className="price">
-            <span className="price-amount">$39</span>
+            <span className="price-amount">$1</span>
             <span className="price-period">/month</span>
           </div>
           <ul className="pricing-features">
@@ -1453,7 +1453,7 @@ function PricingPage() {
             <li>API access</li>
             <li>24/7 support</li>
           </ul>
-          <button className="btn btn-primary btn-large">Upgrade Now</button>
+          <button onClick={() => setCurrentPage('billing')} className="btn btn-primary btn-large">Upgrade Now</button>
         </div>
 
         <div className="pricing-card">
@@ -1560,6 +1560,32 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
     }
   };
 
+  const handleManageSubscription = async () => {
+    try {
+      // Call backend to create Stripe Customer Portal session
+      const formData = new FormData();
+      formData.append('user_email', user.email);
+
+      const response = await fetch(`${GCP_BACKEND_URL}/api/billing/create-portal-session`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create portal session');
+      }
+
+      const data = await response.json();
+
+      // Redirect to Stripe Customer Portal
+      window.location.href = data.portal_url;
+    } catch (err) {
+      console.error('Portal error:', err);
+      alert(`Failed to open customer portal: ${err.message}`);
+    }
+  };
+
   if (!user) {
     return null;
   }
@@ -1622,7 +1648,7 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
                   You're on the free plan with 20 initial credits.
                 </p>
                 <button onClick={handleUpgrade} className="btn btn-primary btn-large">
-                  Upgrade to Pro - $39/month
+                  Upgrade to Pro - $1/month
                 </button>
                 <p className="billing-note">Get 100 credits per month</p>
               </>
@@ -1631,9 +1657,12 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
                 <p className="billing-description">
                   You have an active Pro subscription.
                 </p>
-                <button onClick={() => alert('Manage subscription via Stripe Customer Portal')} className="btn btn-secondary btn-large">
+                <button onClick={handleManageSubscription} className="btn btn-secondary btn-large">
                   Manage Subscription
                 </button>
+                <p className="billing-note" style={{marginTop: '10px', fontSize: '14px'}}>
+                  Cancel subscription, update payment method, or view invoices
+                </p>
               </>
             )}
           </div>
@@ -1691,7 +1720,7 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
 
           <div className="pricing-card-simple featured-simple">
             <h3>Pro</h3>
-            <div className="price-simple">$39<span>/month</span></div>
+            <div className="price-simple">$1<span>/month</span></div>
             <ul>
               <li>100 credits per month</li>
               <li>Advanced satellite data</li>
@@ -1831,6 +1860,22 @@ function SignupForm({ setAuthView }) {
     try {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
+
+      // Send welcome email
+      try {
+        const formData = new FormData();
+        formData.append('user_email', email);
+        formData.append('credits', 20);
+
+        await fetch(`${GCP_BACKEND_URL}/api/email/welcome`, {
+          method: 'POST',
+          body: formData
+        });
+      } catch (emailErr) {
+        console.error('Failed to send welcome email:', emailErr);
+        // Don't block signup if email fails
+      }
+
       setSuccess(true);
     } catch (err) {
       setError(err.message);
