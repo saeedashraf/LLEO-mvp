@@ -293,12 +293,6 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       return;
     }
 
-    if (!credFile) {
-      setError('Please upload your Google credentials file');
-      addLog('error', 'Missing Google credentials file');
-      return;
-    }
-
     if (!query.trim()) {
       setError('Please enter an analysis query');
       addLog('error', 'Missing analysis query');
@@ -452,28 +446,6 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
         </div>
 
         <div className="input-section">
-          <div className="credentials-upload-minimal">
-            <label className="minimal-upload-label">
-              <div className="upload-icon-box">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-                </svg>
-              </div>
-              <div className="upload-text-box">
-                <span className="upload-main-text">
-                  {credFile ? credFile.name : 'Upload Google Credentials'}
-                </span>
-                <span className="upload-sub-text">JSON file required</span>
-              </div>
-              <input
-                type="file"
-                accept=".json"
-                onChange={(e) => setCredFile(e.target.files[0])}
-                className="file-input-hidden"
-              />
-            </label>
-          </div>
-
           <div className="query-input-box">
             <textarea
               value={query}
