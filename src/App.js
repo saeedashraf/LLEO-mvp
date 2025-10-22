@@ -263,7 +263,6 @@ function Navigation({ user, setUser, darkMode, setDarkMode, setShowAuthModal, cu
 // ==================== LANDING PAGE ====================
 function LandingPage({ user, setShowAuthModal, setAuthView }) {
   const [query, setQuery] = useState('');
-  const [credFile, setCredFile] = useState(null);
   const [results, setResults] = useState([]);
   const [selectedResult, setSelectedResult] = useState(null);
   const [showChart, setShowChart] = useState(false);
@@ -326,13 +325,12 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
     setLoading(true);
     setError('');
     addLog('info', `Starting analysis: "${query}"`);
-    addLog('info', 'Uploading credentials and query to backend...');
+    addLog('info', 'Sending query to backend...');
 
     try {
       const formData = new FormData();
       formData.append('query', query);
       formData.append('user_id', user.id);
-      formData.append('credentials_file', credFile);
 
       addLog('info', 'Sending request to backend API...');
       const response = await fetch(`${GCP_BACKEND_URL}/analyze`, {
@@ -400,7 +398,6 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       setSelectedResult(newResult);
       setShowChart(false);
       setQuery('');
-      setCredFile(null);
       addLog('success', 'Analysis results ready to view!');
     } catch (err) {
       setError(err.message);
