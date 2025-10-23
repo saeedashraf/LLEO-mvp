@@ -437,7 +437,7 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
           </div>
           <h2>Large Language Models for Earth Observation</h2>
           <p className="subtitle">
-            Transform questions into comprehensive geospatial insights using GenAI and satellite data.
+            Transform questions into geospatial insights using GenAI and satellite data.
           </p>
         </div>
 
