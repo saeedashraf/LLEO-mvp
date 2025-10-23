@@ -1620,7 +1620,7 @@ function BillingPage({ user, setShowAuthModal, setAuthView }) {
                   You're on the free plan with 20 initial credits.
                 </p>
                 <button onClick={handleUpgrade} className="btn btn-primary btn-large">
-                  Upgrade to Pro - $1/month
+                  Upgrade to Pro / Add Credit
                 </button>
                 <p className="billing-note">Get 100 credits per month</p>
               </>
