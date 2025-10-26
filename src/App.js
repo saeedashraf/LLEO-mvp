@@ -284,6 +284,118 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
     setLogs(prev => [...prev, { timestamp, level, message }]);
   };
 
+  const pollAnalysisStatus = async (sessionId, query) => {
+    const maxPolls = 120; // 10 minutes max (120 * 5 seconds)
+    let pollCount = 0;
+
+    const poll = async () => {
+      try {
+        pollCount++;
+        addLog('info', `Checking analysis status... (${pollCount}/${maxPolls})`);
+
+        const response = await fetch(`${GCP_BACKEND_URL}/status/${sessionId}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to check status');
+        }
+
+        const statusData = await response.json();
+
+        if (statusData.status === 'completed') {
+          addLog('success', `Analysis completed! Session ID: ${sessionId}`);
+          addLog('info', `Analysis type: ${statusData.analysis_type}`);
+          addLog('info', `Location: ${statusData.location || 'Unknown'}`);
+
+          // Save to Supabase
+          addLog('info', 'Saving analysis to database...');
+          const { data: analysisData, error: insertError } = await supabase
+            .from('analyses')
+            .insert([{
+              user_id: user.id,
+              user_email: user.email,
+              session_id: sessionId,
+              query: query,
+              analysis_type: statusData.analysis_type,
+              location: statusData.location || 'Unknown',
+              is_shared: false,
+              created_at: new Date().toISOString()
+            }])
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+
+          // Deduct 1 credit
+          addLog('info', 'Deducting 1 credit...');
+          const { data: deductResult, error: deductError } = await supabase
+            .rpc('deduct_credits', {
+              p_user_id: user.id,
+              p_amount: 1,
+              p_analysis_id: analysisData.id,
+              p_description: `Analysis: ${query.substring(0, 50)}...`
+            });
+
+          if (deductError) {
+            console.error('Failed to deduct credits:', deductError);
+            addLog('warning', 'Analysis completed but failed to deduct credit');
+          } else if (deductResult && !deductResult.success) {
+            addLog('warning', `Credit deduction issue: ${deductResult.error}`);
+          } else {
+            addLog('success', `Credit deducted! Remaining: ${deductResult.credits_remaining}`);
+          }
+
+          const newResult = {
+            id: Date.now(),
+            session_id: sessionId,
+            query: query,
+            analysis_type: statusData.analysis_type,
+            location: statusData.location || 'N/A',
+            created_at: new Date()
+          };
+
+          setResults([newResult, ...results]);
+          setSelectedResult(newResult);
+          setShowChart(false);
+          setQuery('');
+          setLoading(false);
+          addLog('success', 'Analysis results ready to view!');
+
+        } else if (statusData.status === 'failed') {
+          setLoading(false);
+          const errorMsg = statusData.error || 'Analysis failed';
+          setError(errorMsg);
+          addLog('error', `Analysis failed: ${errorMsg}`);
+
+        } else if (statusData.status === 'processing') {
+          // Still processing, poll again
+          if (statusData.progress) {
+            addLog('info', statusData.progress);
+          }
+
+          if (pollCount < maxPolls) {
+            setTimeout(poll, 5000); // Poll every 5 seconds
+          } else {
+            setLoading(false);
+            setError('Analysis timed out. Please try again.');
+            addLog('error', 'Analysis timed out after 10 minutes');
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+        if (pollCount < maxPolls) {
+          setTimeout(poll, 5000); // Retry on error
+        } else {
+          setLoading(false);
+          setError('Failed to check analysis status');
+          addLog('error', `Status check failed: ${err.message}`);
+        }
+      }
+    };
+
+    // Start polling
+    poll();
+  };
+
   const handleAnalyze = async () => {
     if (!user) {
       alert('Please register to analyze!\n\nClick "Login / Sign Up" in the top right corner.');
@@ -344,65 +456,23 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       }
 
       const data = await response.json();
-      addLog('success', `Analysis completed! Session ID: ${data.session_id}`);
-      addLog('info', `Analysis type: ${data.analysis_type}`);
-      addLog('info', `Location: ${data.location || 'Unknown'}`);
 
-      addLog('info', 'Saving analysis to database...');
-      const { data: analysisData, error: insertError } = await supabase
-        .from('analyses')
-        .insert([{
-          user_id: user.id,
-          user_email: user.email,
-          session_id: data.session_id,
-          query: query,
-          analysis_type: data.analysis_type,
-          location: data.location || 'Unknown',
-          is_shared: false,
-          created_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
+      if (data.status === 'processing') {
+        addLog('success', `Analysis queued! Session ID: ${data.session_id}`);
+        addLog('info', 'Backend is processing your request...');
+        addLog('info', 'This may take several minutes for satellite data processing');
 
-      if (insertError) throw insertError;
+        // Start polling for status
+        pollAnalysisStatus(data.session_id, query);
 
-      // Deduct 1 credit using Supabase function
-      addLog('info', 'Deducting 1 credit...');
-      const { data: deductResult, error: deductError } = await supabase
-        .rpc('deduct_credits', {
-          p_user_id: user.id,
-          p_amount: 1,
-          p_analysis_id: analysisData.id,
-          p_description: `Analysis: ${query.substring(0, 50)}...`
-        });
-
-      if (deductError) {
-        console.error('Failed to deduct credits:', deductError);
-        addLog('warning', 'Analysis completed but failed to deduct credit');
-      } else if (deductResult && !deductResult.success) {
-        addLog('warning', `Credit deduction issue: ${deductResult.error}`);
       } else {
-        addLog('success', `Credit deducted! Remaining: ${deductResult.credits_remaining}`);
+        // Legacy: immediate completion (shouldn't happen with new backend)
+        throw new Error('Unexpected response from backend');
       }
 
-      const newResult = {
-        id: Date.now(),
-        session_id: data.session_id,
-        query: query,
-        analysis_type: data.analysis_type,
-        location: data.location || 'N/A',
-        created_at: new Date()
-      };
-
-      setResults([newResult, ...results]);
-      setSelectedResult(newResult);
-      setShowChart(false);
-      setQuery('');
-      addLog('success', 'Analysis results ready to view!');
     } catch (err) {
       setError(err.message);
       addLog('error', `Analysis failed: ${err.message}`);
-    } finally {
       setLoading(false);
     }
   };
