@@ -293,13 +293,21 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
         pollCount++;
         addLog('info', `Checking analysis status... (${pollCount}/${maxPolls})`);
 
-        const response = await fetch(`${GCP_BACKEND_URL}/status/${sessionId}`);
+        const response = await fetch(`${GCP_BACKEND_URL}/status/${sessionId}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
 
         if (!response.ok) {
-          throw new Error('Failed to check status');
+          const errorText = await response.text();
+          console.error('Status check failed:', response.status, errorText);
+          throw new Error(`Status check failed: ${response.status} - ${errorText.substring(0, 100)}`);
         }
 
         const statusData = await response.json();
+        console.log('Status response:', statusData);
 
         if (statusData.status === 'completed') {
           addLog('success', `Analysis completed! Session ID: ${sessionId}`);
@@ -382,12 +390,22 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
         }
       } catch (err) {
         console.error('Polling error:', err);
+
+        // Check if it's a network error
+        if (err.message.includes('NetworkError') || err.message.includes('Failed to fetch')) {
+          addLog('warning', `Network error: ${err.message} - Retrying...`);
+        } else {
+          addLog('warning', `Error checking status: ${err.message}`);
+        }
+
+        // Retry with exponential backoff for network errors
         if (pollCount < maxPolls) {
-          setTimeout(poll, 5000); // Retry on error
+          const retryDelay = err.message.includes('NetworkError') ? 10000 : 5000; // 10s for network errors
+          setTimeout(poll, retryDelay);
         } else {
           setLoading(false);
-          setError('Failed to check analysis status');
-          addLog('error', `Status check failed: ${err.message}`);
+          setError(`Failed to check analysis status: ${err.message}`);
+          addLog('error', `Polling timed out after ${maxPolls} attempts`);
         }
       }
     };
@@ -445,17 +463,35 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
       formData.append('user_id', user.id);
 
       addLog('info', 'Sending request to backend API...');
+      console.log('Submitting analysis:', { query, user_id: user.id });
+
       const response = await fetch(`${GCP_BACKEND_URL}/analyze`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        }
       });
 
+      console.log('Analyze response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Analysis failed');
+        const errorText = await response.text();
+        console.error('Analyze request failed:', response.status, errorText);
+
+        let errorMessage = 'Analysis failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          errorMessage = errorText.substring(0, 200);
+        }
+
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('Analyze response data:', data);
 
       if (data.status === 'processing') {
         addLog('success', `Analysis queued! Session ID: ${data.session_id}`);
@@ -465,12 +501,17 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
         // Start polling for status
         pollAnalysisStatus(data.session_id, query);
 
+      } else if (data.status === 'completed') {
+        // Immediate completion (shouldn't happen often with new backend)
+        addLog('success', `Analysis completed immediately! Session ID: ${data.session_id}`);
+        // Handle immediate completion
+        pollAnalysisStatus(data.session_id, query);
       } else {
-        // Legacy: immediate completion (shouldn't happen with new backend)
-        throw new Error('Unexpected response from backend');
+        throw new Error(`Unexpected status from backend: ${data.status}`);
       }
 
     } catch (err) {
+      console.error('Analysis submission error:', err);
       setError(err.message);
       addLog('error', `Analysis failed: ${err.message}`);
       setLoading(false);
