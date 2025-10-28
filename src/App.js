@@ -173,7 +173,7 @@ function Navigation({ user, setUser, darkMode, setDarkMode, setShowAuthModal, cu
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-brand" onClick={() => setCurrentPage('home')}>
-          <h1>LLEO (sureal.ai)</h1>
+          <h1>LLEO</h1>
         </div>
 
         <div className="navbar-menu">
