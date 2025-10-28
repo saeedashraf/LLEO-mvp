@@ -173,7 +173,7 @@ function Navigation({ user, setUser, darkMode, setDarkMode, setShowAuthModal, cu
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-brand" onClick={() => setCurrentPage('home')}>
-          <h1>LLEO</h1>
+          <h1>LLEO (sureal.ai)</h1>
         </div>
 
         <div className="navbar-menu">
@@ -1416,8 +1416,13 @@ function AboutPage() {
   return (
     <div className="page-container">
       <div className="about-hero">
-        <h1>About LLEO</h1>
+        <h1>About LLEO (sureal.ai)</h1>
         <p className="about-subtitle">Large Language Models for Earth Observation</p>
+        <p className="about-link">
+          <a href="https://sureal.ai/" target="_blank" rel="noopener noreferrer" style={{color: '#007bff', textDecoration: 'none', fontSize: '1.1rem', marginTop: '10px', display: 'inline-block'}}>
+            Visit sureal.ai →
+          </a>
+        </p>
       </div>
 
       <div className="about-content">
@@ -1820,7 +1825,7 @@ function Footer() {
     <footer className="footer">
       <div className="footer-content">
         <p className="footer-text">
-          © 2025 LLEO. All rights reserved.
+          © 2025 LLEO (sureal.ai). All rights reserved.
         </p>
         <div className="footer-links">
           <a href="mailto:contact@lleo.earth" className="footer-link">Contact Us</a>
