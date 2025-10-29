@@ -271,17 +271,53 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
   const [rightPanelTab, setRightPanelTab] = useState('results'); // 'results' or 'log'
   const [logs, setLogs] = useState([]);
   const logContainerRef = useRef(null);
+  const [lastLogTimestamp, setLastLogTimestamp] = useState(null);
 
-  // Auto-scroll logs to bottom when new logs are added
+  // Auto-fetch backend logs every 2 seconds when in log tab
   useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [logs]);
+    if (rightPanelTab !== 'log') return;
+
+    const fetchBackendLogs = async () => {
+      try {
+        const response = await fetch(`${GCP_BACKEND_URL}/api/logs?limit=100`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data.success && data.logs && data.logs.length > 0) {
+          // Add new logs to the top (newest first)
+          const newLogs = data.logs.map(backendLog => ({
+            timestamp: backendLog.timestamp || new Date().toISOString(),
+            displayTime: backendLog.timestamp ? new Date(backendLog.timestamp).toLocaleTimeString() : 'N/A',
+            level: backendLog.severity ? backendLog.severity.toLowerCase() : 'info',
+            message: backendLog.message || '',
+            source: 'backend'
+          }));
+
+          // Only update if we have new logs (check first log timestamp)
+          if (newLogs[0].timestamp !== lastLogTimestamp) {
+            setLogs(newLogs); // Replace all logs with latest (newest first)
+            setLastLogTimestamp(newLogs[0].timestamp);
+          }
+        }
+      } catch (err) {
+        console.error('Auto-fetch logs error:', err);
+      }
+    };
+
+    // Fetch immediately
+    fetchBackendLogs();
+
+    // Then fetch every 2 seconds
+    const interval = setInterval(fetchBackendLogs, 2000);
+
+    return () => clearInterval(interval);
+  }, [rightPanelTab, lastLogTimestamp]);
 
   const addLog = (level, message) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, { timestamp, level, message }]);
+    const timestamp = new Date().toISOString();
+    const displayTime = new Date().toLocaleTimeString();
+    // Add to top of logs (newest first)
+    setLogs(prev => [{ timestamp, displayTime, level, message, source: 'frontend' }, ...prev]);
   };
 
   const pollAnalysisStatus = async (sessionId, query) => {
@@ -752,34 +788,17 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
           {rightPanelTab === 'log' && (
             <div className="log-container">
               <div className="log-header">
-                <button
-                  onClick={async () => {
-                    try {
-                      addLog('info', 'Fetching backend logs from Cloud Logging...');
-                      const response = await fetch(`${GCP_BACKEND_URL}/api/logs?limit=50`);
-                      if (!response.ok) throw new Error('Failed to fetch logs');
-
-                      const data = await response.json();
-                      if (data.success && data.logs) {
-                        addLog('success', `Loaded ${data.count} backend logs`);
-                        // Add backend logs to frontend logs
-                        data.logs.forEach(backendLog => {
-                          const timestamp = backendLog.timestamp ? new Date(backendLog.timestamp).toLocaleTimeString() : 'N/A';
-                          const level = backendLog.severity ? backendLog.severity.toLowerCase() : 'info';
-                          const message = `[Backend] ${backendLog.message}`;
-                          setLogs(prev => [...prev, { timestamp, level, message }]);
-                        });
-                      } else {
-                        addLog('warning', 'No backend logs available');
-                      }
-                    } catch (err) {
-                      addLog('error', `Failed to load backend logs: ${err.message}`);
-                    }
-                  }}
-                  className="btn btn-primary btn-small"
-                >
-                  Load Backend Logs
-                </button>
+                <div className="log-controls">
+                  <label className="log-toggle">
+                    <input
+                      type="checkbox"
+                      checked={autoFetchLogs}
+                      onChange={(e) => setAutoFetchLogs(e.target.checked)}
+                    />
+                    <span>Auto-refresh (5s)</span>
+                  </label>
+                  <span className="log-count">{logs.length} logs</span>
+                </div>
                 <button
                   onClick={() => setLogs([])}
                   className="btn btn-secondary btn-small"
@@ -787,19 +806,25 @@ function LandingPage({ user, setShowAuthModal, setAuthView }) {
                   Clear Logs
                 </button>
               </div>
-              <div className="log-content" ref={logContainerRef}>
+              <div className="log-content" ref={logContainerRef} style={{
+                maxHeight: '600px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
                 {logs.length === 0 ? (
                   <div className="log-empty">
                     <div className="empty-icon">📋</div>
-                    <p>No logs yet. Start an analysis or load backend logs from Cloud Logging.</p>
+                    <p>Loading backend logs... Auto-refresh is {autoFetchLogs ? 'enabled' : 'disabled'}.</p>
                   </div>
                 ) : (
                   <div className="log-entries">
                     {logs.map((log, index) => (
                       <div key={index} className={`log-entry log-${log.level}`}>
-                        <span className="log-timestamp">{log.timestamp}</span>
-                        <span className="log-level">{log.level}</span>
+                        <span className="log-timestamp">{log.displayTime}</span>
+                        <span className="log-level">{log.level.toUpperCase()}</span>
                         <span className="log-message">{log.message}</span>
+                        {log.source && <span className="log-source">[{log.source}]</span>}
                       </div>
                     ))}
                   </div>
